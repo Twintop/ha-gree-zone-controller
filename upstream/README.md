@@ -39,7 +39,7 @@ The combined change of all five branches:
 | Each branch on its own | passes (see the table above) |
 | Real controller, protocol layer | discovery, bind, roles, modes, zone temperatures, column probe (29), writes of a zone setpoint and fan speed — all correct; no module reboot |
 | Real controller, inside Home Assistant (installed via YAML) | entities created as designed, states correct, external changes picked up, per-mode memory learned; no errors in the log |
-| Not tested on real hardware | changing the **mode** from Home Assistant through this branch, and the recall of zone setpoints after it (covered by tests against the fake controller; avoided on the real system while nobody was home) |
+| Real controller, mode change from Home Assistant (verified by hand) | changing the **mode** of the ducted unit from Home Assistant keeps the zone setpoints of the old mode, then recalls and re-applies the stored setpoints of the new mode, as the wall panel does |
 
 ## What changes, and why
 
