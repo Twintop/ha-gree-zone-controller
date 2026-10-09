@@ -1,0 +1,25 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Gree Zone Controller",
+        "description": "IP address of the zone controller's WiFi module.",
+        "data": { "host": "Host" }
+      },
+      "zones": {
+        "title": "Zones",
+        "description": "Name each zone. Always-open zones get no on/off switch (turning them off is refused or shuts the whole system down).",
+        "data": {
+          "zone_1": "Zone 1", "zone_2": "Zone 2", "zone_3": "Zone 3", "zone_4": "Zone 4",
+          "zone_5": "Zone 5", "zone_6": "Zone 6", "zone_7": "Zone 7", "zone_8": "Zone 8",
+          "always_on": "Always-open zones"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach or bind to the controller.",
+      "no_zones": "The controller did not report an AC unit and zones."
+    },
+    "abort": { "already_configured": "This controller is already configured." }
+  }
+}

@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.bin
+upstream/*.patch
+upstream/LOCAL-NOTES.md

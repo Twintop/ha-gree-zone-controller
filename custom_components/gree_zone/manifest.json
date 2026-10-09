@@ -1,0 +1,11 @@
+{
+  "domain": "gree_zone",
+  "name": "Gree Zone Controller",
+  "codeowners": ["@Twintop"],
+  "config_flow": true,
+  "documentation": "https://github.com/Twintop/ha-gree-zone-controller",
+  "issue_tracker": "https://github.com/Twintop/ha-gree-zone-controller/issues",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "version": "0.1.0"
+}
