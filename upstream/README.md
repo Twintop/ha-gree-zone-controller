@@ -20,12 +20,30 @@ Work happens on branches of the fork
 
 | PR | Branch | Commits | What | Tests | Status |
 | --- | --- | --- | --- | --- | --- |
-| 4 | [`zone-controller-support`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-controller-support) | `43f4881`, `d54829c`, `fe1f4de` | Zone controller support, a `DeviceType` for every device, the gateway labelled as a zone controller, and no error log for Quiet/Turbo on units without them | 272 | ready for review |
-| 5 | [`zone-setpoint-memory`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-setpoint-memory) | `f9f2665`, `7715e78` | Remember the zone target temperatures per mode, stored per device as raw columns | 280 | ready, after PR 4 |
-| 6 | [`setpoint-memory-all-devices`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/setpoint-memory-all-devices) | `3824cc4` | Remember the target temperature per mode on standalone and VRF units too (opt-in) | 284 | ready, after PR 5 |
+| 4 | [`zone-controller-support`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-controller-support) | `43f4881`, `d54829c`, `fe1f4de`, `5bfa6cb`, `d6abdcd` | Zone controller support, a `DeviceType` for every device, the gateway labelled as a zone controller, and no error log for Quiet/Turbo on units without them | 272 | in review: [#552](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/552), requested changes made |
+| 5 | [`zone-setpoint-memory`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-setpoint-memory) | `25b7d72`, `9f5eb1a`, `175bf61` | Remember the zone target temperatures per mode, stored per device as raw columns | 280 | ready, after PR 4 |
+| 6 | [`setpoint-memory-all-devices`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/setpoint-memory-all-devices) | `0a8342c` | Remember the target temperature per mode on standalone and VRF units too (opt-in) | 284 | ready, after PR 5 |
 
 The `5.0-dev` baseline is 255 tests. Every branch passes Ruff 0.17.0 (the pinned
-version), and Mypy and Pylint show nothing new compared with `5.0-dev`.
+version), and Mypy and Pylint show nothing new compared with `5.0-dev`. Mypy
+has to run with Home Assistant installed (`pip install homeassistant`, plus the
+`enum_identity_compare` plugin from Home Assistant core that `mypy.ini` names).
+Without it every Home Assistant type is `Any`, and real errors slip through: the
+first runs here missed the one Rob found in #552.
+
+### Review of #552
+
+| Point | What it was | Fix |
+| --- | --- | --- |
+| Blocker | When a gateway had no bound sub-unit at start, `reconcile_vrf_controllers()` passed `translation_key=UNDEFINED` to the device registry. Home Assistant treats it as a key and crashes on `.format()`. The whole entry failed, and the next start failed without a retry. Reproduced on the test install with an offline fake gateway. Plain VRF users were hit too. | `5bfa6cb`: `_controller_label()` leaves model and name out when the device exists and no sub-unit is bound, and uses the VRF gateway label for a new one. The entry now loads, and the offline gateway keeps its label. |
+| Question | The device options form copied the previous sub-unit's options as defaults, so Zone 1 opened with Zone Switch unticked after the AC unit, the AC unit could get `zone`, and every sub-unit got the previous one's **name**. | `d6abdcd`: only the mode lists and features are copied. `zone` is never copied, and every zone starts with Zone Switch ticked. The features default is filtered against what the device supports. |
+
+Found on the way, already on `5.0-dev` (not from these PRs):
+`cleanup_device_connection_issues()` deletes repair issues while it loops over
+`registry.issues`. When a removed device still has a "connection failed" issue,
+the entry fails with `RuntimeError: dictionary changed size during iteration`. A
+reload then works, because the first issue was already deleted. The fix is to
+loop over `list(registry.issues)`. It would be a small bugfix PR of its own.
 
 ### Checked on the real system (Home Assistant 2026.10, LE60-13/GH)
 
@@ -39,6 +57,7 @@ installed code were put back exactly as they were, and checked.
 | 4 | Entities and states (AC unit: modes, fan incl. turbo, no target temperature or swing; zones: switch and 16–30 °C number). Gateway device shown as "Zone controller", with the AC unit and zones linked. Through Home Assistant: a zone target temperature, a zone switch, the fan speed, and Heat + Turbo (`Mod` 2, `WdSpd` 6), each confirmed on the controller. Found and fixed: an error log for Quiet on every fan change. |
 | 5 | A mode change from Home Assistant recalls the zone setpoints of the new mode (Heat → all zones 18 °C, Fan → 20 °C), with the memory in the new per-device format. No errors. |
 | 6 | The new option is accepted by the YAML schema and has no effect on the zone controller, whose recall still works. Standalone and VRF units are covered by tests against fakes only: there is no such unit here. |
+| 4–6 after #552 review | With all three branches in place, from an empty memory: Fan medium and back to High (no error log); Heat with Master set to 18 °C; Fan brings Master back to 20 °C; Heat brings 18 °C back. The memory store holds `{"fan": {"StTem": 4}, "heat": {"StTem": 2}}` for Master. Gateway labelled "Zone controller c5a5f". |
 
 ## The plan
 
@@ -91,7 +110,9 @@ the zone PRs were opened:
     a **Target Temperature** number.
   * The zone switch is the optional feature **Zone Switch**, so it can be left
     out for an always-open zone. The feature is only offered on zones; zones
-    don't show the climate options.
+    don't show the climate options. A new zone always starts with it ticked.
+  * When several sub-units are set up in one go, the next one's form takes the
+    mode lists and features of the one before, not its name, and never `zone`.
   * `GreeEntityDescription.device_filter`: a small generic hook so an entity can
     be limited to a kind of device when the props alone can't tell.
   * The gateway device of a zone controller is labelled "Zone controller"
