@@ -16,13 +16,29 @@ Work happens on branches of the fork
 | [#548](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/548) | DHCP step: look up the sub-unit by its own MAC, and deep-copy the entry data so a new IP is saved |
 | [#549](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/549) | Climate: skip a device without modes instead of stopping; offer target temperature and swing only when the unit has them |
 
-**Remaining: three PRs**, each built on the one before:
+**Remaining: three PRs**, each built on the one before, all on `5.0-dev` @ `c2bc8c4`:
 
-| PR | Branch | What | Status |
-| --- | --- | --- | --- |
-| 4 | [`zone-controller-support`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-controller-support) | Zone controller support, with a `DeviceType` for every device and the gateway device labelled as a zone controller | in progress |
-| 5 | [`zone-setpoint-memory`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-setpoint-memory) | Remember the zone target temperatures per mode, with storage keyed by device so PR 6 only adds | in progress |
-| 6 | [`setpoint-memory-all-devices`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/setpoint-memory-all-devices) | Remember the target temperature per mode on every device that has one (opt-in per device) | planned |
+| PR | Branch | Commits | What | Tests | Status |
+| --- | --- | --- | --- | --- | --- |
+| 4 | [`zone-controller-support`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-controller-support) | `43f4881`, `d54829c`, `fe1f4de` | Zone controller support, a `DeviceType` for every device, the gateway labelled as a zone controller, and no error log for Quiet/Turbo on units without them | 272 | ready for review |
+| 5 | [`zone-setpoint-memory`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-setpoint-memory) | `f9f2665`, `7715e78` | Remember the zone target temperatures per mode, stored per device as raw columns | 280 | ready, after PR 4 |
+| 6 | [`setpoint-memory-all-devices`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/setpoint-memory-all-devices) | `3824cc4` | Remember the target temperature per mode on standalone and VRF units too (opt-in) | 284 | ready, after PR 5 |
+
+The `5.0-dev` baseline is 255 tests. Every branch passes Ruff 0.17.0 (the pinned
+version), and Mypy and Pylint show nothing new compared with `5.0-dev`.
+
+### Checked on the real system (Home Assistant 2026.10, LE60-13/GH)
+
+Each branch was installed on a Home Assistant test install (YAML, next to
+`gree_zone`) and driven through real service calls. After every run the
+controller, the memory stores of both integrations, the test config and the
+installed code were put back exactly as they were, and checked.
+
+| PR | What was checked |
+| --- | --- |
+| 4 | Entities and states (AC unit: modes, fan incl. turbo, no target temperature or swing; zones: switch and 16–30 °C number). Gateway device shown as "Zone controller", with the AC unit and zones linked. Through Home Assistant: a zone target temperature, a zone switch, the fan speed, and Heat + Turbo (`Mod` 2, `WdSpd` 6), each confirmed on the controller. Found and fixed: an error log for Quiet on every fan change. |
+| 5 | A mode change from Home Assistant recalls the zone setpoints of the new mode (Heat → all zones 18 °C, Fan → 20 °C), with the memory in the new per-device format. No errors. |
+| 6 | The new option is accepted by the YAML schema and has no effect on the zone controller, whose recall still works. Standalone and VRF units are covered by tests against fakes only: there is no such unit here. |
 
 ## The plan
 
@@ -80,6 +96,8 @@ the zone PRs were opened:
     be limited to a kind of device when the props alone can't tell.
   * The gateway device of a zone controller is labelled "Zone controller"
     instead of "VRF gateway".
+  * Fan mode changes only touch Quiet and Turbo on units that have them; before,
+    every fan change on a unit without Quiet logged an error.
 * **Tests**: `tests/fakes/zone.py` (a fake controller that behaves like the real
   one: subDev only, no `cid`, per-unit columns, mirrored mode/fan, column cap)
   and `tests/test_zone_controller.py`.
