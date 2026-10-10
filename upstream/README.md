@@ -20,9 +20,9 @@ Work happens on branches of the fork
 
 | PR | Branch | Commits | What | Tests | Status |
 | --- | --- | --- | --- | --- | --- |
-| 4 | [`zone-controller-support`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-controller-support) | `43f4881`, `d54829c`, `fe1f4de`, `5bfa6cb`, `d6abdcd` | Zone controller support, a `DeviceType` for every device, the gateway labelled as a zone controller, and no error log for Quiet/Turbo on units without them | 272 | in review: [#552](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/552), requested changes made |
-| 5 | [`zone-setpoint-memory`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-setpoint-memory) | `25b7d72`, `9f5eb1a`, `175bf61` | Remember the zone target temperatures per mode, stored per device as raw columns | 280 | ready, after PR 4 |
-| 6 | [`setpoint-memory-all-devices`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/setpoint-memory-all-devices) | `0a8342c` | Remember the target temperature per mode on standalone and VRF units too (opt-in) | 284 | ready, after PR 5 |
+| 4 | [`zone-controller-support`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-controller-support) | `43f4881`, `d54829c`, `fe1f4de`, `5bfa6cb`, `d6abdcd`, `d666fe1` | Zone controller support, a `DeviceType` for every device, the gateway labelled as a zone controller, and no error log for Quiet/Turbo on units without them | 272 | in review: [#552](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/552), requested changes made |
+| 5 | [`zone-setpoint-memory`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-setpoint-memory) | `fc96858`, `ef8b90f`, `e2d1f9a` | Remember the zone target temperatures per mode, stored per device as raw columns | 280 | ready, after PR 4 |
+| 6 | [`setpoint-memory-all-devices`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/setpoint-memory-all-devices) | `8a3350f` | Remember the target temperature per mode on standalone and VRF units too (opt-in) | 284 | ready, after PR 5 |
 
 The `5.0-dev` baseline is 255 tests. Every branch passes Ruff 0.17.0 (the pinned
 version), and Mypy and Pylint show nothing new compared with `5.0-dev`. Mypy
@@ -38,12 +38,14 @@ first runs here missed the one Rob found in #552.
 | Blocker | When a gateway had no bound sub-unit at start, `reconcile_vrf_controllers()` passed `translation_key=UNDEFINED` to the device registry. Home Assistant treats it as a key and crashes on `.format()`. The whole entry failed, and the next start failed without a retry. Reproduced on the test install with an offline fake gateway. Plain VRF users were hit too. | `5bfa6cb`: `_controller_label()` leaves model and name out when the device exists and no sub-unit is bound, and uses the VRF gateway label for a new one. The entry now loads, and the offline gateway keeps its label. |
 | Question | The device options form copied the previous sub-unit's options as defaults, so Zone 1 opened with Zone Switch unticked after the AC unit, the AC unit could get `zone`, and every sub-unit got the previous one's **name**. | `d6abdcd`: only the mode lists and features are copied. `zone` is never copied, and every zone starts with Zone Switch ticked. The features default is filtered against what the device supports. |
 
-Found on the way, already on `5.0-dev` (not from these PRs):
-`cleanup_device_connection_issues()` deletes repair issues while it loops over
-`registry.issues`. When a removed device still has a "connection failed" issue,
-the entry fails with `RuntimeError: dictionary changed size during iteration`. A
-reload then works, because the first issue was already deleted. The fix is to
-loop over `list(registry.issues)`. It would be a small bugfix PR of its own.
+Found on the way, already on `5.0-dev`, fixed in PR 4 (`d666fe1`):
+`cleanup_device_connection_issues()` deleted repair issues while it looped over
+`registry.issues`. When a removed device still had a "connection failed" issue,
+the entry failed with `RuntimeError: dictionary changed size during iteration`,
+and the stale gateway device stayed. It now loops over a copy. Checked on the
+test install: with the offline fake gateway removed from the YAML again, the
+entry loads at the next start and both the issue and the gateway device are
+gone.
 
 ### Checked on the real system (Home Assistant 2026.10, LE60-13/GH)
 
