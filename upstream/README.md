@@ -20,9 +20,9 @@ Work happens on branches of the fork
 
 | PR | Branch | Commits | What | Tests | Status |
 | --- | --- | --- | --- | --- | --- |
-| 4 | [`zone-controller-support`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-controller-support) | `43f4881`, `d54829c`, `fe1f4de`, `5bfa6cb`, `d6abdcd`, `d666fe1` | Zone controller support, a `DeviceType` for every device, the gateway labelled as a zone controller, and no error log for Quiet/Turbo on units without them | 272 | in review: [#552](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/552), requested changes made |
-| 5 | [`zone-setpoint-memory`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-setpoint-memory) | `fc96858`, `ef8b90f`, `e2d1f9a` | Remember the zone target temperatures per mode, stored per device as raw columns | 280 | ready, after PR 4 |
-| 6 | [`setpoint-memory-all-devices`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/setpoint-memory-all-devices) | `8a3350f` | Remember the target temperature per mode on standalone and VRF units too (opt-in) | 284 | ready, after PR 5 |
+| 4 | [`zone-controller-support`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-controller-support) | `43f4881`, `d54829c`, `fe1f4de`, `5bfa6cb`, `d6abdcd`, `d666fe1`, `3a806af`, `9f11775`, `d7f57c4` | Zone controller support, a `DeviceType` for every device, the gateway labelled as a zone controller, °C and °F, and no error log for Quiet/Turbo on units without them | 280 | in review: [#552](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/552), requested changes made |
+| 5 | [`zone-setpoint-memory`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-setpoint-memory) | `520ed36`, `0a5d526`, `25c0f01`, `83241d1` | Remember the zone target temperatures per mode, stored per device as raw columns (with the °F bit) | 289 | ready, after PR 4 |
+| 6 | [`setpoint-memory-all-devices`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/setpoint-memory-all-devices) | `0350d85` | Remember the target temperature per mode on standalone and VRF units too (opt-in) | 293 | ready, after PR 5 |
 
 The `5.0-dev` baseline is 255 tests. Every branch passes Ruff 0.17.0 (the pinned
 version), and Mypy and Pylint show nothing new compared with `5.0-dev`. Mypy
@@ -36,6 +36,9 @@ first runs here missed the one Rob found in #552.
 | Point | What it was | Fix |
 | --- | --- | --- |
 | Blocker | When a gateway had no bound sub-unit at start, `reconcile_vrf_controllers()` passed `translation_key=UNDEFINED` to the device registry. Home Assistant treats it as a key and crashes on `.format()`. The whole entry failed, and the next start failed without a retry. Reproduced on the test install with an offline fake gateway. Plain VRF users were hit too. | `5bfa6cb`: `_controller_label()` leaves model and name out when the device exists and no sub-unit is bound, and uses the VRF gateway label for a new one. The entry now loads, and the offline gateway keeps its label. |
+| @p-monteiro: are all zone controllers `5000`/`5001`? | Those model ids, the `GR-ZCntrlr` name and the `00` suffix of the AC unit are fixed in the WiFi module firmware (v1.21, v1.27, v1.28), not taken from the units. The only other model found, the Braemar LE60, uses the same module. The `5000` in the name comes from a value we could not trace. | `3a806af`: `ZONE_CONTROLLER_MODELS`, one entry per model, longest matching name prefix wins. A general `GR-ZCntrlr` entry plus a `GR-ZCntrlr_5000_` one as an example. |
+| @p-monteiro: wire the zone target into `target_temperature`? | Yes. | `9f11775`: zones use `target_temperature` and `set_target_temperature`. |
+| Found while digging: °F | The panel can show °F, and the controller has its own `TemUnit` and `StFahFlg` columns. In °F, `StTem` + 16 and `StFahFlg` follow the `SetTem`/`TemRec` table. Sending only `StTem` keeps the old bit. | `d7f57c4`: zones read and write both columns, the zone number follows the unit (16–30 °C or 61–86 °F), and the Temperature Units select works on the AC unit. PR 5 stores the bit too (`83241d1`). |
 | Question | The device options form copied the previous sub-unit's options as defaults, so Zone 1 opened with Zone Switch unticked after the AC unit, the AC unit could get `zone`, and every sub-unit got the previous one's **name**. | `d6abdcd`: only the mode lists and features are copied. `zone` is never copied, and every zone starts with Zone Switch ticked. The features default is filtered against what the device supports. |
 
 Found on the way, already on `5.0-dev`, fixed in PR 4 (`d666fe1`):
@@ -60,6 +63,7 @@ installed code were put back exactly as they were, and checked.
 | 5 | A mode change from Home Assistant recalls the zone setpoints of the new mode (Heat → all zones 18 °C, Fan → 20 °C), with the memory in the new per-device format. No errors. |
 | 6 | The new option is accepted by the YAML schema and has no effect on the zone controller, whose recall still works. Standalone and VRF units are covered by tests against fakes only: there is no such unit here. |
 | 4–6 after #552 review | With all three branches in place, from an empty memory: Fan medium and back to High (no error log); Heat with Master set to 18 °C; Fan brings Master back to 20 °C; Heat brings 18 °C back. The memory store holds `{"fan": {"StTem": 4}, "heat": {"StTem": 2}}` for Master. Gateway labelled "Zone controller c5a5f". |
+| 4, °F | Over WiFi: `TemUnit=1` on the AC unit switched every unit and the panel to °F. Set on the panel: 64 °F = `StTem` 2/`StFahFlg` 0, 66 °F = 3/0, 67 °F = 3/1. Sent over WiFi: 5/1 showed 70 °F; `StTem` 6 alone kept bit 1 and showed 72 °F. Through Home Assistant with PR 4: the Temperature Units select (AC unit only) switched the controller to °F, and Master set to 21 °C went out as 70 °F (5/1). Back to °C, everything checked against the snapshot, and both integrations' memory stores put back. |
 
 ## The plan
 
