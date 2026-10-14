@@ -95,3 +95,6 @@ Tested with: LE60-13/GH, WiFi module firmware `362001062617` v1.27
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+Not affiliated with or endorsed by Gree. Gree and the Gree logo, used as the
+integration's icon, are trademarks of Gree Electric Appliances, Inc. of Zhuhai.
