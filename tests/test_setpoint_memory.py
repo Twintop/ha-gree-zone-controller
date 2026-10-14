@@ -98,6 +98,7 @@ class FakeController:
 class Entry:
     entry_id = "e1"
     data = {"ac_unit": AC, "key": "k", "zones": [{"mac": z, "name": z, "always_on": i == 0} for i, z in enumerate(Z)]}
+    options: dict = {}
 
 
 def raws(slot):
@@ -206,6 +207,34 @@ async def main():
     print("ALL PASSED")
 
 
+async def memory_off():
+    """With the option off, nothing is learned or recalled, and what was stored stays."""
+    dev = FakeController()
+    entry = Entry()
+    entry.options = {"setpoint_memory": False}
+    c = coord.GreeZoneCoordinator(object(), entry, dev)
+    await c.async_load_memory()
+    stored = {"2": {z: {"StTem": 9, "StFahFlg": 0} for z in Z}}
+    c.setpoint_memory = {mode: dict(zones) for mode, zones in stored.items()}
+
+    await poll(c)
+    await poll(c, advance=25)          # Cool steady, but nothing is learned
+    assert c.setpoint_memory == stored, c.setpoint_memory
+    await c.async_set_mode(2)          # -> Heat: no recall of the stored 25 °C
+    assert dev.state[AC]["Mod"] == 2 and dev.setpoints() == [19, 20, 18, 20], dev.setpoints()
+    await c.async_command("z03", {"StTem": 6, "StFahFlg": 0})
+    assert c.setpoint_memory == stored, c.setpoint_memory
+
+    entry.options = {"setpoint_memory": True}   # on again: learning carries on
+    await poll(c, advance=1)
+    await poll(c, advance=25)
+    assert raws(c.setpoint_memory["2"]) == dict(zip(Z, [3, 4, 6, 4])), c.setpoint_memory
+
+
+def test_memory_off():
+    asyncio.run(memory_off())
+
+
 def test_memory_migration():
     """Version 1 kept only StTem per zone. It loads as StTem with bit 0."""
     old = {"1": {"z01": 4, "z02": 2}, "2": {"z01": 2}}
@@ -223,4 +252,5 @@ def test_setpoint_memory():
 
 if __name__ == "__main__":
     test_setpoint_memory()
+    test_memory_off()
     test_memory_migration()

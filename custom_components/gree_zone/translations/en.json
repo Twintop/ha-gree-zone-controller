@@ -21,5 +21,18 @@
       "no_zones": "The controller did not report an AC unit and zones."
     },
     "abort": { "already_configured": "This controller is already configured." }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Gree Zone Controller",
+        "data": {
+          "setpoint_memory": "Remember zone setpoints per mode"
+        },
+        "data_description": {
+          "setpoint_memory": "Like the wall panel: learn each zone's setpoint per mode, and set them again when you change the mode from Home Assistant. Off: a mode change leaves the zone setpoints as they are. What was learned is kept."
+        }
+      }
+    }
   }
 }

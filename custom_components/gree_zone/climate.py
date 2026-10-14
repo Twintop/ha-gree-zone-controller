@@ -85,9 +85,15 @@ class GreeZoneClimate(GreeZoneEntity, ClimateEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        attributes: dict[str, Any] = {
+            "raw_mode": self.values.get("Mod"),
+            "error_code": self.values.get("AllErr"),
+        }
+        if not self.coordinator.memory_enabled:
+            return attributes
         names = {zone["mac"]: zone["name"] for zone in self.coordinator.zones}
         unit = self.coordinator.temperature_unit
-        memory = {
+        attributes["setpoint_memory"] = {
             MOD_TO_HVAC[int(mode)].value: {
                 names.get(mac, mac): to_unit(setpoint["StTem"], setpoint.get("StFahFlg", 0), unit)
                 for mac, setpoint in zones.items()
@@ -95,11 +101,7 @@ class GreeZoneClimate(GreeZoneEntity, ClimateEntity):
             for mode, zones in self.coordinator.setpoint_memory.items()
             if int(mode) in MOD_TO_HVAC
         }
-        return {
-            "raw_mode": self.values.get("Mod"),
-            "error_code": self.values.get("AllErr"),
-            "setpoint_memory": memory,
-        }
+        return attributes
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         if hvac_mode == HVACMode.OFF:

@@ -1,16 +1,27 @@
-"""Config flow: discover the controller, bind, then name the zones."""
+"""Config flow: discover the controller, bind, then name the zones. Options flow:
+whether the zone setpoints are remembered per mode."""
 from __future__ import annotations
 
 from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_HOST
+from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv
 
 from .api import GreeZoneClient, GreeZoneError
-from .const import AC_UNIT_SUFFIX, CONF_AC_UNIT, CONF_KEY, CONF_MAC, CONF_ZONES, DOMAIN
+from .const import (
+    AC_UNIT_SUFFIX,
+    CONF_AC_UNIT,
+    CONF_KEY,
+    CONF_MAC,
+    CONF_SETPOINT_MEMORY,
+    CONF_ZONES,
+    DEFAULT_SETPOINT_MEMORY,
+    DOMAIN,
+)
 
 CONF_ALWAYS_ON = "always_on"
 
@@ -21,6 +32,11 @@ class GreeZoneConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._data: dict[str, Any] = {}
         self._zone_macs: list[str] = []
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> GreeZoneOptionsFlow:
+        return GreeZoneOptionsFlow()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
@@ -71,3 +87,16 @@ class GreeZoneConfigFlow(ConfigFlow, domain=DOMAIN):
         }
         schema[vol.Optional(CONF_ALWAYS_ON, default=["zone_1"])] = cv.multi_select(labels)
         return self.async_show_form(step_id="zones", data_schema=vol.Schema(schema))
+
+
+class GreeZoneOptionsFlow(OptionsFlow):
+    """One option: remember the zone setpoints per mode, on by default."""
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+        current = self.config_entry.options.get(CONF_SETPOINT_MEMORY, DEFAULT_SETPOINT_MEMORY)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({vol.Required(CONF_SETPOINT_MEMORY, default=current): bool}),
+        )

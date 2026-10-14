@@ -15,6 +15,11 @@ CONF_KEY = "key"
 CONF_AC_UNIT = "ac_unit"
 CONF_ZONES = "zones"  # list of {"mac": ..., "name": ..., "always_on": bool}
 
+# Option: learn the zone setpoints per mode and set them again on a mode change
+# from Home Assistant, like the wall panel does.
+CONF_SETPOINT_MEMORY = "setpoint_memory"
+DEFAULT_SETPOINT_MEMORY = True
+
 # Field names come from the WiFi module firmware (U-W05SA v1.27) column table.
 # TemUnit is the unit of the controller and the wall panel: 0 °C, 1 °F.
 AC_COLS = ["Pow", "Mod", "WdSpd", "AllErr", "TemUnit"]

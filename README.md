@@ -37,6 +37,11 @@ Assistant) bypass that, so the integration keeps its own copy:
 
 A mode's values are learned once the system has run in that mode for one poll.
 
+It is on by default. To turn it off, open the integration and choose
+**Configure**, then untick **Remember zone setpoints per mode**. A mode change
+then leaves the zone setpoints as they are. What was learned is kept, so
+turning it on again carries on from there.
+
 ### Not available: current zone temperatures
 
 The panel shows each zone's ambient temperature, but the WiFi module never

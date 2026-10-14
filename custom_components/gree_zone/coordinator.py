@@ -18,7 +18,9 @@ from .const import (
     AC_COLS,
     CONF_AC_UNIT,
     CONF_KEY,
+    CONF_SETPOINT_MEMORY,
     CONF_ZONES,
+    DEFAULT_SETPOINT_MEMORY,
     DOMAIN,
     SCAN_INTERVAL_SECONDS,
     ZONE_COLS,
@@ -96,6 +98,14 @@ class GreeZoneCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     async def async_load_memory(self) -> None:
         self.setpoint_memory = await self._store.async_load() or {}
 
+    @property
+    def memory_enabled(self) -> bool:
+        """The setpoint_memory option. Off: nothing is learned or recalled.
+
+        What was stored is kept, so turning it on again carries on from there.
+        """
+        return bool(self.entry.options.get(CONF_SETPOINT_MEMORY, DEFAULT_SETPOINT_MEMORY))
+
     def _remember(self, mode: int, zone_mac: str, setpoint: Setpoint) -> None:
         slot = self.setpoint_memory.setdefault(str(mode), {})
         if slot.get(zone_mac) != setpoint:
@@ -107,7 +117,12 @@ class GreeZoneCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         if mode != self._mode:
             self._mode, self._mode_since = mode, now
             return
-        if mode is None or self._held or now - self._mode_since < MODE_SETTLE_SECONDS:
+        if (
+            not self.memory_enabled
+            or mode is None
+            or self._held
+            or now - self._mode_since < MODE_SETTLE_SECONDS
+        ):
             return
         for zone_mac, setpoint in setpoints.items():
             self._remember(mode, zone_mac, setpoint)
@@ -176,16 +191,21 @@ class GreeZoneCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         if self.data is not None:
             self.data.setdefault(target, {}).update(values)
             mode = self.data.get(self.ac_unit, {}).get("Mod")
-            if "StTem" in values and target != self.ac_unit and mode is not None:
+            if (
+                self.memory_enabled
+                and "StTem" in values
+                and target != self.ac_unit
+                and mode is not None
+            ):
                 self._remember(mode, target, self._setpoint_of(target))
             self.async_set_updated_data(self.data)
         async_call_later(self.hass, CONFIRM_DELAY_SECONDS, self._async_confirm)
 
     async def async_set_mode(self, mode: int) -> None:
-        """Switch mode and recall that mode's zone setpoints, as the wall panel does."""
+        """Switch mode and, with the memory on, recall that mode's zone setpoints."""
         current = (self.data or {}).get(self.ac_unit, {}).get("Mod")
-        switching = current is not None and mode != current
-        if switching and not self._held:
+        use_memory = self.memory_enabled and current is not None and mode != current
+        if use_memory and not self._held:
             # Snapshot the outgoing mode from a fresh read, in case a setpoint was
             # changed on the panel or app since the last poll.
             try:
@@ -197,7 +217,7 @@ class GreeZoneCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                     for zone_mac, setpoint in setpoints.items():
                         self._remember(current, zone_mac, setpoint)
         await self.async_command(self.ac_unit, {"Pow": 1, "Mod": mode})
-        if not switching:
+        if not use_memory:
             return
         for zone in self.zones:
             stored = self.setpoint_memory.get(str(mode), {}).get(zone["mac"])
