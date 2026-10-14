@@ -137,6 +137,38 @@ Ways to get them, best first:
 3. SDR (`rtl_433`) on the RF remotes — frequency and protocol undocumented.
 4. Or simply a separate temperature sensor next to each RF remote.
 
+## Gree cloud
+
+The module does not use Gree's MQTT cloud. Its firmware (v1.27) has no MQTT
+client. It looks up `<region>.dis.gree.com` (`gree_get_disip`), gets a data
+server address from it (`[gree_cloud]datHost ... datHostPort ... protocol`), and
+keeps a TCP socket to that server, encrypted with AES-ECB like the LAN protocol.
+The Gree+ app controls the controller this way (checked on 2026-10-14 from a
+phone on cellular only).
+
+So a client that talks to Gree's MQTT broker cannot control it. The cloud-only
+setup of `gree_custom` sent its bind over MQTT to the gateway MAC (v1 twice,
+then v2) and got no reply.
+
+The account's device list (`/App/GetDevsInRoomsOfHomeV2`) has one entry per
+unit, all with the same key (the module's key):
+
+| `mac` | `pmac` | `mid` | `name` (as set in the app) |
+| --- | --- | --- | --- |
+| `<gateway mac>` | empty | `50` | Zone Controller |
+| `<gateway mac>00` | `<gateway mac>` | `5000` | Zone Controller |
+| `<gateway mac>01` to `04` | `<gateway mac>` | `5001` | Zone1 to Zone4 |
+
+`pmac` is the MAC of the gateway. `ver` is `V1.2.1`; `hid`, `prodModel` and
+`subdivCode` are empty. `gree_custom` keeps only the `...00` entry: its
+duplicate filter drops the others, because they share the key and their MAC
+does not end in `00`. See [`upstream/README.md`](../upstream/README.md).
+
+Pairing the module with Gree+ again (wall panel: **Menu, Function, Reset WiFi,
+Confirm**, or the reset button on the module) gives it a new local key; the
+integration re-binds by itself. Removing the controller from the Gree+ account
+does not affect local control: it stays on the WiFi and answers on the LAN.
+
 ## Firmware
 
 Images are served by Gree's update servers:

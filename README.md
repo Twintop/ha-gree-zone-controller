@@ -65,6 +65,10 @@ Give the module a fixed IP (DHCP reservation).
   the UI doesn't bounce back while the controller is applying a change.
 * If the module is re-paired in Gree+ and its key changes, the integration
   re-binds automatically.
+* Local only. You can remove the controller from your Gree+ account after
+  pairing, and local control keeps working. A cloud-only setup in another
+  integration can't control it: the WiFi module uses an older Gree cloud
+  protocol, not MQTT. See [docs/PROTOCOL.md](docs/PROTOCOL.md#gree-cloud).
 
 ## Upstream
 
