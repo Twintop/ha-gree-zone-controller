@@ -16,13 +16,12 @@ Work happens on branches of the fork
 | [#548](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/548) | DHCP step: look up the sub-unit by its own MAC, and deep-copy the entry data so a new IP is saved |
 | [#549](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/549) | Climate: skip a device without modes instead of stopping; offer target temperature and swing only when the unit has them |
 
-**Remaining: three PRs**, each built on the one before, all on `5.0-dev` @ `c2bc8c4`:
+**Remaining: two PRs**, the second built on the first, on `5.0-dev` @ `c2bc8c4`. The memory was planned as two PRs (5 for zones, 6 for every device) until review of #552 asked for one:
 
 | PR | Branch | Commits | What | Tests | Status |
 | --- | --- | --- | --- | --- | --- |
 | 4 | [`zone-controller-support`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-controller-support) | `43f4881`, `d54829c`, `fe1f4de`, `5bfa6cb`, `d6abdcd`, `d666fe1`, `3a806af`, `9f11775`, `d7f57c4`, `6d4c77b`, `2f14e87`, `07f605c`, `b922a26`, `a788528`, `e21a986`, `e33b6f7`, `3f55495` | Zone controller support, a `DeviceType` for every device, the gateway labelled as a zone controller, °C and °F, target temperature columns as groups like the sensors, no error log for Quiet/Turbo on units without them, documented as local only, the cloud login kept out of logs and diagnostics, and cloud discovery keeping the sub-units of a gateway | 288 | in review: [#552](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/552), requested changes made |
-| 5 | [`zone-setpoint-memory`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-setpoint-memory) | `f55ddc8`, `e41ab45`, `72ed332`, `deb83a1` | Remember the zone target temperatures per mode, stored per device as raw columns (with the half-degree/°F bit) | 297 | ready, after PR 4 |
-| 6 | [`setpoint-memory-all-devices`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/setpoint-memory-all-devices) | `5f7388e` | Remember the target temperature per mode on standalone and VRF units too (opt-in) | 301 | ready, after PR 5 |
+| 5 | [`zone-setpoint-memory`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-setpoint-memory) | `e90d573`, `d997408`, `ed3865e` | Remember the target temperature per mode on every device that has one, zones included: stored per device as raw columns (with the half-degree/°F bit), a device option that is on by default | 302 | ready, after PR 4 |
 
 The `5.0-dev` baseline is 255 tests. Every branch passes Ruff 0.17.0 (the pinned
 version), and Mypy and Pylint show nothing new compared with `5.0-dev`. Mypy
@@ -43,6 +42,7 @@ first runs here missed the one Rob found in #552.
 | @p-monteiro, round 4 (two PR comments) | (1) Treat the target temperature, bit and unit like the sensors: numbered props, `invalidate_missing_property_group()` for all three in `_remove_unsupported_props()`, and have it return the prop that survives so the device saves it (sensors too) and uses it directly. Drop the AC unit's `StTem` 0, or use `missing_value=-1` if 0 is valid. (2) Only mids 5000/5001 answer those columns, but some units send no mid or name, so go by what answers. | (1) `b922a26`: the function returns the survivor, the sensor props are saved on the device. `a788528`: `TARGET_TEMPERATURE_1/2` (`SetTem`/`StTem`), `_BIT_1/2` (`TemRec`/`StFahFlg`), `_UNIT_1/2` (`TemUn`/`TemUnit`), saved and used directly. 0 is valid in all three (`StTem` 0 = 16 °C), so `missing_value=-1`; the AC unit's always-0 `StTem`/`StFahFlg` look like a zone at 16 °C, so it drops them by type. The bit only goes to a device that answers it (before, `TemRec` always went with `SetTem`). PR 5 memory uses the saved columns, so PR 6 no longer touches `device.py`. (2) Nothing uses the mids since `6d4c77b`. |
 | @p-monteiro, round 5: test a cloud-only entry added through the UI and post the cloud discovery log; the bit also matters in °F | Cloud discovery lists 6 devices with one shared key: the gateway (`pmac` empty, mid `50`), the AC unit (`…00`, mid `5000`) and the zones (`…01`–`…04`, mid `5001`), each with `pmac` = the gateway MAC. `_filter_duplicate_devices_complete()` keeps only `…00`, and `gree_extract_macs()` only treats MACs ending in `00` as sub-units. The MQTT bind gets no reply, although the Gree+ app controls the controller over cellular: the ME31-00/C13 firmware has no MQTT client, only the older TCP cloud (`dis.gree.com`). Also found: `GreeCloudApi.login()` logs the session token and email at debug level. | `e21a986`: docs say a zone controller is local only; docstring of `has_target_temperature_bit` mentions °F. A redacted debug log of the flow was posted. Offered as a separate PR: `pmac` for the controller MAC, a `pmac`-based duplicate filter, and redacting the login log lines. |
 | @p-monteiro, round 6: add the redaction (or leave it to them); with cloud and local discovery, does `gree_merge_discovered_devices()` offer the zones with local preference? For VRF, `pmac` may not be the MQTT controller, so more VRF data is needed first | Redaction went further than the login lines: setting up an entry logged its data with only the device key redacted (so for a cloud entry the password and token too), the UI new-entry log did the same, entry diagnostics kept the token and email, some lines logged the email or the entry title, and the repr of `GreeDiscoveredDevice` (logged by discovery) held the key and email. Cloud + local offered only the AC unit: local devices are only offered when the cloud lists them, and the duplicate filter had cut the cloud list to `…00`. | `e33b6f7`: login response logged as `r`/`msg`/`uid`/`alive` only, a shared `TO_REDACT` (device key, password, token, email) for the entry logs and diagnostics, user id or entry id instead of the email or title, key and email out of the repr. `3f55495`: a listed device that others point to with their `pmac` is a gateway; it is left out and its sub-units are kept, everything else goes through the key check as before. `gree_extract_macs()` left alone. |
+| @p-monteiro, round 7 (feedback for the memory) | One PR for the memory of every device, since the logic is the same. Store the raw columns (`SetTem` and bit) so a unit change between modes comes back right. Apply the stored target when the mode changes, keep the target if nothing is stored. A device option, on by default. | Storage and apply/keep already worked that way (applied on mode changes made from Home Assistant). The PR 5 branch was rebuilt: the old PR 5 commits squashed into `e90d573` (so it builds on its own), the old PR 6 commit as `d997408`, and `ed3865e`: `setpoint_memory` for every device with a target temperature, zones included, on by default, plus a test with 18.5 °C coming back as 65 °F after a switch to °F. The `setpoint-memory-all-devices` branch was deleted. |
 | Question | The device options form copied the previous sub-unit's options as defaults, so Zone 1 opened with Zone Switch unticked after the AC unit, the AC unit could get `zone`, and every sub-unit got the previous one's **name**. | `d6abdcd`: only the mode lists and features are copied. `zone` is never copied, and every zone starts with Zone Switch ticked. The features default is filtered against what the device supports. |
 
 Found on the way, already on `5.0-dev`, fixed in PR 4 (`d666fe1`):
@@ -71,11 +71,12 @@ installed code were put back exactly as they were, and checked.
 | 4–6, review round 4 | Through Home Assistant with PR 4: the AC unit polls only `Pow`, `Mod`, `WdSpd` and `TemUnit` (from diagnostics), zones keep `StTem`, `StFahFlg` and `TemUnit`; the AC unit has no target temperature. Master 18.5 °C went out as 2/1; in °F, 21 °C as 70 °F (5/1); back in °C, 18 as 2/0. Master at 16 °C (`StTem` 0) kept its target temperature through a restart. With PR 6: the memory learned all four zones with both columns and nothing for the AC unit, and Master 18.5 °C as 2/1. Restored afterwards, everything matched the snapshot. |
 | 4, cloud-only (review round 5) | The controller was paired with Gree+ again for this (its local key changed, `gree_zone` re-bound by itself). A cloud-only entry added through the UI offered only the AC unit, and its MQTT bind timed out (v1 twice, v2 once), so no entry was created. Afterwards the gree_custom test entry, its devices and entities were merged back from the backup into the current registries (other integrations had changed them meanwhile), and the controller matched the snapshot. |
 | 4, cloud + local (review round 6) | With `3f55495`, a cloud + local entry added through the UI offered the AC unit and all four zones with the names from the Gree app, all marked Local. Every device bound locally with the key from the cloud, the gateway device showed as "Zone controller" with all five linked, and Master 18.5 °C went out as 2/1 and back to 2/0. The debug log of the flow had no token, password or email. Before the fix, the first try offered only the AC unit, and its setup log held the cloud password in clear text: the reason for `e33b6f7`. Restored afterwards by merging only the gree_custom items back into the registries; the controller matched the snapshot. |
+| 5, review round 7 | With `ed3865e` on the test install: the entry loaded without errors, and with the option at its default the memory learned all four zones (`StTem` and `StFahFlg` under Heat) and nothing for the AC unit. No mode was changed. Restored afterwards. |
 | 4, review round 3 | In °C, `StTem` 2 with `StFahFlg` 1 written over WiFi stayed for minutes and through panel use, while the panel showed 18: the bit is the half degree, the panel shows only whole degrees. Through Home Assistant with PR 4: zone numbers step 0.5 °C; Master 18.5 °C went out as 2/1; in °F, 21 °C went out as 70 °F (5/1); back in °C, 18 went out as 2/0. After the first poll every unit keeps only `StTem`, `StFahFlg` and `TemUnit`. Restored afterwards, both memory stores put back. |
 
 ## The plan
 
-### Why three PRs
+### Why two PRs (planned as three)
 
 Review of #547–#549 brought two suggestions from @p-monteiro
 ([#549](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/549)):
@@ -88,14 +89,14 @@ the zone PRs were opened:
   runtime after the info fetch, with no config entry change. Doing it after the
   merge would only touch the same lines again. It also lets the gateway device be
   labelled correctly: the zone controller showed up as a "VRF gateway".
-* **Memory for every device is its own PR (6).** It changes behaviour for every
-  split and VRF owner, a unit's target temperature has half degrees and a
-  Fahrenheit table, Auto ignores the target, and it can only be tried on hardware
-  this project does not have. Kept separate, it can't hold up the zone controller
-  work, which is verified on real hardware.
-* **PR 5 is shaped so PR 6 only adds.** Its storage is keyed by device and holds
-  the raw target temperature columns, and the class has a generic name. No
-  storage migration is needed later.
+* **The memory is its own PR, after the zone controller.** It changes how
+  devices behave after a mode change, so it can't hold up the zone controller
+  work, which is verified on real hardware. It was first split in two (PR 5 for
+  zones, PR 6 for every device). Review of #552 asked for one PR, because the
+  logic is the same for every device, with the option on by default.
+* **Shaped for every device from the start.** The storage is keyed by device and
+  holds the raw target temperature columns, and the class has a generic name, so
+  folding PR 6 into PR 5 needed no storage migration.
 * **Not four PRs.** A `DeviceType`-only PR first would be a refactor with nothing
   using it yet, and PR 4 would have to be rebuilt on it anyway: more review
   rounds, no less risk.
@@ -142,32 +143,28 @@ the zone PRs were opened:
 * **Docs**: `docs/protocol.md`, `docs/entities.md`, `docs/configuration.md`,
   `docs/architecture.md`, `supported-devices.md`.
 
-### PR 5: Remember zone target temperatures per mode
+### PR 5: Remember the target temperature per mode
 
-* `SetpointMemory` in `aiogree/setpoint_memory.py`, the per-mode memory the wall
-  panel has: learn from polls once a zone reports the same mode twice; before a
-  mode change from Home Assistant, read the zones again and store them under the
-  old mode; after it, send the stored values of the new mode.
+* `SetpointMemory` in `aiogree/setpoint_memory.py` learns from polls once a
+  device reports the same mode twice. Mode and target come in one reply.
 * Storage keyed by device: `{device MAC: {mode: {column: raw value}}}`, for a
-  zone `{"StTem": 4, "StFahFlg": 0}`. The columns are the ones the device uses,
-  so a standalone unit stores `SetTem` and `TemRec` the same way, without
-  conversions and without a migration.
+  zone `{"StTem": 4, "StFahFlg": 0}`, for a unit `SetTem` and `TemRec`. Raw
+  columns are the same in °C and °F, so a value comes back right also after
+  the unit was switched between the modes.
+* On a mode change from Home Assistant, the stored target of the new mode is
+  set; a mode with nothing stored keeps the current target. Changes made with
+  a remote, the panel or the app are learned, but not acted on.
+  * A standalone or VRF unit sends it in the same command as the mode. No
+    recall into Auto, where the unit ignores the target.
+  * Zones follow the mode of their ducted unit, like the wall panel: before the
+    change the zones are read again and stored under the old mode, after it the
+    stored values of the new mode are sent.
+* A device option, **Remember Target Temperature per Mode** (`setpoint_memory`),
+  for every device with a target temperature, zones included. On by default.
 * `__init__.py` keeps it in a `Store` per config entry
-  (`.storage/gree_custom.<entry_id>.setpoints`) and feeds it from the zone
-  coordinators. No Home Assistant imports in the memory itself; fully tested.
-
-### PR 6: Remember the target temperature per mode on every device
-
-* A device option, **Remember the target temperature per mode**, for units that
-  have a target temperature. Off by default, because it changes how the unit
-  behaves after a mode change.
-* Learns from the unit's own polls (mode and `SetTem`/`TemRec` come in one
-  reply). On a mode change from Home Assistant, the stored target of the new
-  mode goes out in the same command as the mode.
-* No recall into Auto for these units: in Auto the unit ignores the target
-  temperature.
-* Raw columns are stored, so a unit set to Fahrenheit needs no conversion.
-* Tested against fakes only; a split or VRF owner should try it before merge.
+  (`.storage/gree_custom.<entry_id>.setpoints`). No Home Assistant imports in the
+  memory itself; fully tested against fakes. Standalone and VRF units are only
+  tested against fakes; a split or VRF owner should try it before merge.
 
 ## Testing a branch in Home Assistant without the UI
 
