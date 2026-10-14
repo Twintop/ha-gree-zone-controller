@@ -20,9 +20,9 @@ Work happens on branches of the fork
 
 | PR | Branch | Commits | What | Tests | Status |
 | --- | --- | --- | --- | --- | --- |
-| 4 | [`zone-controller-support`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-controller-support) | `43f4881`, `d54829c`, `fe1f4de`, `5bfa6cb`, `d6abdcd`, `d666fe1`, `3a806af`, `9f11775`, `d7f57c4`, `6d4c77b`, `2f14e87`, `07f605c` | Zone controller support, a `DeviceType` for every device, the gateway labelled as a zone controller, °C and °F, and no error log for Quiet/Turbo on units without them | 280 | in review: [#552](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/552), requested changes made |
-| 5 | [`zone-setpoint-memory`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-setpoint-memory) | `33e4330`, `85f8982`, `b15d022`, `4af4408` | Remember the zone target temperatures per mode, stored per device as raw columns (with the half-degree/°F bit) | 289 | ready, after PR 4 |
-| 6 | [`setpoint-memory-all-devices`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/setpoint-memory-all-devices) | `717fafb` | Remember the target temperature per mode on standalone and VRF units too (opt-in) | 293 | ready, after PR 5 |
+| 4 | [`zone-controller-support`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-controller-support) | `43f4881`, `d54829c`, `fe1f4de`, `5bfa6cb`, `d6abdcd`, `d666fe1`, `3a806af`, `9f11775`, `d7f57c4`, `6d4c77b`, `2f14e87`, `07f605c`, `b922a26`, `a788528` | Zone controller support, a `DeviceType` for every device, the gateway labelled as a zone controller, °C and °F, target temperature columns as groups like the sensors, and no error log for Quiet/Turbo on units without them | 283 | in review: [#552](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/552), requested changes made |
+| 5 | [`zone-setpoint-memory`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-setpoint-memory) | `a625d3c`, `aec62e1`, `f3d2b34`, `4213fd6` | Remember the zone target temperatures per mode, stored per device as raw columns (with the half-degree/°F bit) | 292 | ready, after PR 4 |
+| 6 | [`setpoint-memory-all-devices`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/setpoint-memory-all-devices) | `8145a19` | Remember the target temperature per mode on standalone and VRF units too (opt-in) | 296 | ready, after PR 5 |
 
 The `5.0-dev` baseline is 255 tests. Every branch passes Ruff 0.17.0 (the pinned
 version), and Mypy and Pylint show nothing new compared with `5.0-dev`. Mypy
@@ -38,8 +38,9 @@ first runs here missed the one Rob found in #552.
 | Blocker | When a gateway had no bound sub-unit at start, `reconcile_vrf_controllers()` passed `translation_key=UNDEFINED` to the device registry. Home Assistant treats it as a key and crashes on `.format()`. The whole entry failed, and the next start failed without a retry. Reproduced on the test install with an offline fake gateway. Plain VRF users were hit too. | `5bfa6cb`: `_controller_label()` leaves model and name out when the device exists and no sub-unit is bound, and uses the VRF gateway label for a new one. The entry now loads, and the offline gateway keeps its label. |
 | @p-monteiro: are all zone controllers `5000`/`5001`? | Those model ids, the `GR-ZCntrlr` name and the `00` suffix of the AC unit are fixed in the WiFi module firmware (v1.21, v1.27, v1.28), not taken from the units. The only other model found, the Braemar LE60, uses the same module. The `5000` in the name comes from a value we could not trace. | `3a806af`: `ZONE_CONTROLLER_MODELS`, one entry per model, longest matching name prefix wins. A general `GR-ZCntrlr` entry plus a `GR-ZCntrlr_5000_` one as an example. |
 | @p-monteiro: wire the zone target into `target_temperature`? | Yes. | `9f11775`: zones use `target_temperature` and `set_target_temperature`. |
-| Found while digging: °F | The panel can show °F, and the controller has its own `TemUnit` and `StFahFlg` columns. In °F, `StTem` + 16 and `StFahFlg` follow the `SetTem`/`TemRec` table. Sending only `StTem` keeps the old bit. | `d7f57c4`: zones read and write both columns, the zone number follows the unit (16–30 °C or 61–86 °F), and the Temperature Units select works on the AC unit. PR 5 stores the bit too (`83241d1`). |
+| Found while digging: °F | The panel can show °F, and the controller has its own `TemUnit` and `StFahFlg` columns. In °F, `StTem` + 16 and `StFahFlg` follow the `SetTem`/`TemRec` table. Sending only `StTem` keeps the old bit. | `d7f57c4`: zones read and write both columns, the zone number follows the unit (16–30 °C or 61–86 °F), and the Temperature Units select works on the AC unit. PR 5 stores the bit too (`4213fd6`). |
 | @p-monteiro, round 3 (commit comments on 3a806af and d7f57c4, plus the `device.py` thread) | (1) The model table is not needed: detection is name only, why not the suffix? (2) Pick columns by what a device answers, not by type; do the controllers answer the old columns, or `Add0.5`? (3) 25.5 °C is valid: °C to the nearest half degree when supported, °F to integers. (4) The zone select filter should not be needed. | (1) `6d4c77b`: two constants (`GR-ZCntrlr`, `00`), discovery names by controller name plus suffix. (2) `2f14e87`: no sub-unit answers `SetTem`/`TemRec`/`TemUn`/`Add0.5`; `StTem`/`StFahFlg`/`TemUnit` are in the default poll and dropped where not answered; `TemUn` wins over `TemUnit`; type kept only where columns cannot tell (the AC unit answers `StTem` = 0). (3) `07f605c`: rounding moved into the device; zones do half degrees in °C (checked: 2/1 stays, panel shows 18). (4) Kept: zones answer `TemUnit`. |
+| @p-monteiro, round 4 (two PR comments) | (1) Treat the target temperature, bit and unit like the sensors: numbered props, `invalidate_missing_property_group()` for all three in `_remove_unsupported_props()`, and have it return the prop that survives so the device saves it (sensors too) and uses it directly. Drop the AC unit's `StTem` 0, or use `missing_value=-1` if 0 is valid. (2) Only mids 5000/5001 answer those columns, but some units send no mid or name, so go by what answers. | (1) `b922a26`: the function returns the survivor, the sensor props are saved on the device. `a788528`: `TARGET_TEMPERATURE_1/2` (`SetTem`/`StTem`), `_BIT_1/2` (`TemRec`/`StFahFlg`), `_UNIT_1/2` (`TemUn`/`TemUnit`), saved and used directly. 0 is valid in all three (`StTem` 0 = 16 °C), so `missing_value=-1`; the AC unit's always-0 `StTem`/`StFahFlg` look like a zone at 16 °C, so it drops them by type. The bit only goes to a device that answers it (before, `TemRec` always went with `SetTem`). PR 5 memory uses the saved columns, so PR 6 no longer touches `device.py`. (2) Nothing uses the mids since `6d4c77b`. |
 | Question | The device options form copied the previous sub-unit's options as defaults, so Zone 1 opened with Zone Switch unticked after the AC unit, the AC unit could get `zone`, and every sub-unit got the previous one's **name**. | `d6abdcd`: only the mode lists and features are copied. `zone` is never copied, and every zone starts with Zone Switch ticked. The features default is filtered against what the device supports. |
 
 Found on the way, already on `5.0-dev`, fixed in PR 4 (`d666fe1`):
@@ -65,6 +66,7 @@ installed code were put back exactly as they were, and checked.
 | 6 | The new option is accepted by the YAML schema and has no effect on the zone controller, whose recall still works. Standalone and VRF units are covered by tests against fakes only: there is no such unit here. |
 | 4–6 after #552 review | With all three branches in place, from an empty memory: Fan medium and back to High (no error log); Heat with Master set to 18 °C; Fan brings Master back to 20 °C; Heat brings 18 °C back. The memory store holds `{"fan": {"StTem": 4}, "heat": {"StTem": 2}}` for Master. Gateway labelled "Zone controller c5a5f". |
 | 4, °F | Over WiFi: `TemUnit=1` on the AC unit switched every unit and the panel to °F. Set on the panel: 64 °F = `StTem` 2/`StFahFlg` 0, 66 °F = 3/0, 67 °F = 3/1. Sent over WiFi: 5/1 showed 70 °F; `StTem` 6 alone kept bit 1 and showed 72 °F. Through Home Assistant with PR 4: the Temperature Units select (AC unit only) switched the controller to °F, and Master set to 21 °C went out as 70 °F (5/1). Back to °C, everything checked against the snapshot, and both integrations' memory stores put back. |
+| 4–6, review round 4 | Through Home Assistant with PR 4: the AC unit polls only `Pow`, `Mod`, `WdSpd` and `TemUnit` (from diagnostics), zones keep `StTem`, `StFahFlg` and `TemUnit`; the AC unit has no target temperature. Master 18.5 °C went out as 2/1; in °F, 21 °C as 70 °F (5/1); back in °C, 18 as 2/0. Master at 16 °C (`StTem` 0) kept its target temperature through a restart. With PR 6: the memory learned all four zones with both columns and nothing for the AC unit, and Master 18.5 °C as 2/1. Restored afterwards, everything matched the snapshot. |
 | 4, review round 3 | In °C, `StTem` 2 with `StFahFlg` 1 written over WiFi stayed for minutes and through panel use, while the panel showed 18: the bit is the half degree, the panel shows only whole degrees. Through Home Assistant with PR 4: zone numbers step 0.5 °C; Master 18.5 °C went out as 2/1; in °F, 21 °C went out as 70 °F (5/1); back in °C, 18 went out as 2/0. After the first poll every unit keeps only `StTem`, `StFahFlg` and `TemUnit`. Restored afterwards, both memory stores put back. |
 
 ## The plan
@@ -107,10 +109,13 @@ the zone PRs were opened:
   * Mode translation for the zone controller numbering (1 Cool, 2 Heat, 3 Dry,
     4 Fan, 5 Auto), turbo as `WdSpd` 6 (no `Tur` column), leaving Cool/Heat
     drops turbo to High.
-  * `GreeProp.ZONE_TARGET_TEMPERATURE = "StTem"` (°C − 16), polled **only** by
-    zones (`DeviceState.add_polled`), so other units send exactly the same
-    columns as before (there is a test for that). Getter/setter clamp to
-    16–30 °C.
+  * The target temperature, its bit and the unit are column groups, like the
+    sensors: `SetTem`/`StTem`, `TemRec`/`StFahFlg`, `TemUn`/`TemUnit`. Each
+    device keeps the first column of each group it answers (`missing_value=-1`,
+    since `StTem` 0 is 16 °C), so other units keep their columns. The AC unit
+    drops its always-0 `StTem`/`StFahFlg`. A zone is `StTem` + 16 with the
+    `SetTem`/`TemRec` table: half degrees in °C, whole degrees in °F, unit from
+    `TemUnit`. The bit is only sent to a device that answers it.
   * Discovery names the sub-units `AC unit`, `Zone 1` … instead of five times
     `zone`.
 * **Home Assistant layer**
@@ -140,8 +145,9 @@ the zone PRs were opened:
   mode change from Home Assistant, read the zones again and store them under the
   old mode; after it, send the stored values of the new mode.
 * Storage keyed by device: `{device MAC: {mode: {column: raw value}}}`, for a
-  zone `{"StTem": 4}`. A standalone unit can later store `SetTem` and `TemRec`
-  the same way, without conversions and without a migration.
+  zone `{"StTem": 4, "StFahFlg": 0}`. The columns are the ones the device uses,
+  so a standalone unit stores `SetTem` and `TemRec` the same way, without
+  conversions and without a migration.
 * `__init__.py` keeps it in a `Store` per config entry
   (`.storage/gree_custom.<entry_id>.setpoints`) and feeds it from the zone
   coordinators. No Home Assistant imports in the memory itself; fully tested.
