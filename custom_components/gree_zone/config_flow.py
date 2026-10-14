@@ -10,7 +10,7 @@ from homeassistant.const import CONF_HOST
 from homeassistant.helpers import config_validation as cv
 
 from .api import GreeZoneClient, GreeZoneError
-from .const import CONF_AC_UNIT, CONF_KEY, CONF_MAC, CONF_ZONES, DOMAIN, MID_AC_UNIT
+from .const import AC_UNIT_SUFFIX, CONF_AC_UNIT, CONF_KEY, CONF_MAC, CONF_ZONES, DOMAIN
 
 CONF_ALWAYS_ON = "always_on"
 
@@ -37,8 +37,10 @@ class GreeZoneConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 await self.async_set_unique_id(client.mac)
                 self._abort_if_unique_id_configured(updates={CONF_HOST: host})
-                ac = [s["mac"] for s in subs if s.get("mid") == MID_AC_UNIT]
-                self._zone_macs = sorted(s["mac"] for s in subs if s.get("mid") != MID_AC_UNIT)
+                # The AC unit is sub-unit 00, the zones are 01 to 08.
+                macs = [s["mac"] for s in subs if "mac" in s]
+                ac = [mac for mac in macs if mac.endswith(AC_UNIT_SUFFIX)]
+                self._zone_macs = sorted(mac for mac in macs if not mac.endswith(AC_UNIT_SUFFIX))
                 if not ac or not self._zone_macs:
                     errors["base"] = "no_zones"
                 else:

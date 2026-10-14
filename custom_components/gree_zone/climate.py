@@ -13,9 +13,10 @@ from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, TEMP_OFFSET
+from .const import DOMAIN
 from .coordinator import GreeZoneCoordinator
 from .entity import GreeZoneEntity
+from .temperature import to_unit
 
 # Mod values as used by this controller (NOT the usual Gree numbering);
 # mapped by cycling the wall panel through its modes.
@@ -85,9 +86,11 @@ class GreeZoneClimate(GreeZoneEntity, ClimateEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         names = {zone["mac"]: zone["name"] for zone in self.coordinator.zones}
+        unit = self.coordinator.temperature_unit
         memory = {
             MOD_TO_HVAC[int(mode)].value: {
-                names.get(mac, mac): raw + TEMP_OFFSET for mac, raw in zones.items()
+                names.get(mac, mac): to_unit(setpoint["StTem"], setpoint.get("StFahFlg", 0), unit)
+                for mac, setpoint in zones.items()
             }
             for mode, zones in self.coordinator.setpoint_memory.items()
             if int(mode) in MOD_TO_HVAC

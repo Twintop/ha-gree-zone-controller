@@ -14,10 +14,11 @@ its WiFi module is fragile. This integration handles all of that.
 
 | Entity | What it does |
 | --- | --- |
-| `climate` | AC power, mode (Cool / Heat / Dry / Fan / Auto) and fan speed (Auto, Low … High, Turbo in Cool/Heat). Attribute `setpoint_memory` shows the remembered per-mode setpoints. |
+| `climate` | AC power, mode (Cool / Heat / Dry / Fan / Auto) and fan speed (Auto, Low … High, Turbo in Cool/Heat). Attribute `setpoint_memory` shows the remembered per-mode setpoints, in the controller's unit. |
 | `switch` **System** | Whole-system power. Zones keep their own on/off setting while the system is off, exactly like the wall panel. |
 | `switch` per zone | Opens/closes the zone. Zones marked *always open* get no switch: turning them off is refused by the controller or shuts the whole system down. |
-| `number` per zone | Zone target temperature, 16–30 °C. |
+| `number` per zone | Zone target temperature in the controller's unit: 16–30 °C in half degrees, or 61–86 °F. Home Assistant shows it in your own unit. The wall panel shows only whole degrees in °C, so it shows 18 for 18.5. |
+| `select` **Temperature unit** | °C or °F for the whole controller, wall panel included. |
 
 ### Per-mode setpoint memory
 
@@ -29,7 +30,10 @@ Assistant) bypass that, so the integration keeps its own copy:
   Home Assistant, on the panel or in the app;
 * before Home Assistant changes the mode it snapshots the current setpoints
   under the outgoing mode, then sends the incoming mode's saved setpoints;
+* it keeps the half-degree/°F bit with each setpoint, so 18.5 °C or 67 °F
+  comes back exactly;
 * the memory survives restarts (`.storage/gree_zone.<entry_id>.setpoints`).
+  A memory saved by version 0.1 is converted when it is loaded.
 
 A mode's values are learned once the system has run in that mode for one poll.
 
@@ -81,7 +85,8 @@ The same support is in the process of being ported to RobHofmann's
 ```
 custom_components/gree_zone/   the integration
 docs/PROTOCOL.md               everything known about the device and protocol
-tests/                         setpoint-memory tests against a simulated controller
+tests/                         setpoint-memory tests against a simulated controller,
+                               and the °C/°F setpoint conversions
 tools/gree_probe.py            CLI to scan / bind / list sub-units / read / write columns
 tools/firmware_fields.py       list the column names a module firmware supports
 upstream/                      notes and patch for the port to gree_custom (5.0)

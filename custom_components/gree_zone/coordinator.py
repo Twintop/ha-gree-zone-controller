@@ -38,7 +38,33 @@ CONFIRM_DELAY_SECONDS = 4
 # learned once the mode was also seen on the previous poll, so a poll caught in
 # the middle of a panel mode switch is never stored under the wrong mode.
 MODE_SETTLE_SECONDS = 8
-STORAGE_VERSION = 1
+# Version 1 stored only StTem per zone, version 2 stores StTem and its bit.
+STORAGE_VERSION = 2
+
+# One zone's setpoint as the controller has it: {"StTem": raw, "StFahFlg": bit}
+Setpoint = dict[str, int]
+# {str(Mod): {zone_mac: Setpoint}}
+SetpointMemory = dict[str, dict[str, Setpoint]]
+
+
+def migrate_memory(data: dict[str, dict[str, Any]]) -> SetpointMemory:
+    """Turn a version 1 memory (raw StTem per zone) into version 2."""
+    return {
+        mode: {
+            mac: value if isinstance(value, dict) else {"StTem": value, "StFahFlg": 0}
+            for mac, value in zones.items()
+        }
+        for mode, zones in data.items()
+    }
+
+
+class _MemoryStore(Store[SetpointMemory]):
+    """The setpoint memory on disk, migrated from older versions on load."""
+
+    async def _async_migrate_func(
+        self, old_major_version: int, old_minor_version: int, old_data: dict[str, Any]
+    ) -> SetpointMemory:
+        return migrate_memory(old_data)
 
 
 class GreeZoneCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
@@ -55,43 +81,47 @@ class GreeZoneCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.client = client
         self.ac_unit: str = entry.data[CONF_AC_UNIT]
         self.zones: list[dict[str, Any]] = entry.data[CONF_ZONES]
-        # Zone sub-unit …0N mirrors its setpoint in the gateway's StTemN.
-        self._setpoint_cols = {zone["mac"]: f"StTem{int(zone['mac'][-2:])}" for zone in self.zones}
+        # Zone sub-unit …0N mirrors its setpoint in the gateway's StTemN, and
+        # the setpoint's bit in StFahFlgN.
+        self._setpoint_cols = {
+            zone["mac"]: (f"StTem{int(zone['mac'][-2:])}", f"StFahFlg{int(zone['mac'][-2:])}")
+            for zone in self.zones
+        }
         self._held: dict[str, dict[str, tuple[Any, float]]] = {}
-        # {str(Mod): {zone_mac: raw StTem}}
-        self.setpoint_memory: dict[str, dict[str, int]] = {}
-        self._store: Store[dict[str, dict[str, int]]] = Store(
-            hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}.setpoints"
-        )
+        self.setpoint_memory: SetpointMemory = {}
+        self._store = _MemoryStore(hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}.setpoints")
         self._mode: int | None = None
         self._mode_since = 0.0
 
     async def async_load_memory(self) -> None:
         self.setpoint_memory = await self._store.async_load() or {}
 
-    def _remember(self, mode: int, zone_mac: str, raw: int) -> None:
+    def _remember(self, mode: int, zone_mac: str, setpoint: Setpoint) -> None:
         slot = self.setpoint_memory.setdefault(str(mode), {})
-        if slot.get(zone_mac) != raw:
-            slot[zone_mac] = raw
+        if slot.get(zone_mac) != setpoint:
+            slot[zone_mac] = dict(setpoint)
             self._store.async_delay_save(lambda: self.setpoint_memory, 5)
 
-    def _learn(self, mode: int | None, setpoints: dict[str, int]) -> None:
+    def _learn(self, mode: int | None, setpoints: dict[str, Setpoint]) -> None:
         now = time.monotonic()
         if mode != self._mode:
             self._mode, self._mode_since = mode, now
             return
         if mode is None or self._held or now - self._mode_since < MODE_SETTLE_SECONDS:
             return
-        for zone_mac, raw in setpoints.items():
-            self._remember(mode, zone_mac, raw)
+        for zone_mac, setpoint in setpoints.items():
+            self._remember(mode, zone_mac, setpoint)
 
-    async def _read_setpoints(self) -> tuple[int | None, dict[str, int]]:
-        """Mode plus every zone's setpoint, from a single gateway reply."""
-        res = await self.client.status(
-            self.client.mac, ["Mod", *self._setpoint_cols.values()]
-        )
+    async def _read_setpoints(self) -> tuple[int | None, dict[str, Setpoint]]:
+        """Mode plus every zone's setpoint and bit, from a single gateway reply."""
+        cols = ["Mod"]
+        for setpoint_col, bit_col in self._setpoint_cols.values():
+            cols += [setpoint_col, bit_col]
+        res = await self.client.status(self.client.mac, cols)
         setpoints = {
-            mac: res[col] for mac, col in self._setpoint_cols.items() if col in res
+            mac: {"StTem": res[setpoint_col], "StFahFlg": res.get(bit_col, 0)}
+            for mac, (setpoint_col, bit_col) in self._setpoint_cols.items()
+            if setpoint_col in res
         }
         return res.get("Mod"), setpoints
 
@@ -101,7 +131,7 @@ class GreeZoneCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         for zone in self.zones:
             data[zone["mac"]] = await self.client.status(zone["mac"], ZONE_COLS)
             if zone["mac"] in setpoints:
-                data[zone["mac"]]["StTem"] = setpoints[zone["mac"]]
+                data[zone["mac"]].update(setpoints[zone["mac"]])
         self._learn(mode, setpoints)
         return data
 
@@ -147,7 +177,7 @@ class GreeZoneCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             self.data.setdefault(target, {}).update(values)
             mode = self.data.get(self.ac_unit, {}).get("Mod")
             if "StTem" in values and target != self.ac_unit and mode is not None:
-                self._remember(mode, target, values["StTem"])
+                self._remember(mode, target, self._setpoint_of(target))
             self.async_set_updated_data(self.data)
         async_call_later(self.hass, CONFIRM_DELAY_SECONDS, self._async_confirm)
 
@@ -164,15 +194,26 @@ class GreeZoneCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                 _LOGGER.debug("Could not snapshot setpoints before mode change: %s", err)
             else:
                 if read_mode == current:
-                    for zone_mac, raw in setpoints.items():
-                        self._remember(current, zone_mac, raw)
+                    for zone_mac, setpoint in setpoints.items():
+                        self._remember(current, zone_mac, setpoint)
         await self.async_command(self.ac_unit, {"Pow": 1, "Mod": mode})
         if not switching:
             return
         for zone in self.zones:
-            raw = self.setpoint_memory.get(str(mode), {}).get(zone["mac"])
-            if raw is not None and raw != self.data.get(zone["mac"], {}).get("StTem"):
-                await self.async_command(zone["mac"], {"StTem": raw})
+            stored = self.setpoint_memory.get(str(mode), {}).get(zone["mac"])
+            if stored is not None and stored != self._setpoint_of(zone["mac"]):
+                # Both columns: the controller keeps an old bit otherwise.
+                await self.async_command(zone["mac"], dict(stored))
+
+    @property
+    def temperature_unit(self) -> int | None:
+        """TemUnit of the controller: 0 °C, 1 °F. None before the first poll."""
+        return (self.data or {}).get(self.ac_unit, {}).get("TemUnit")
+
+    def _setpoint_of(self, zone_mac: str) -> Setpoint:
+        """A zone's current setpoint and bit, as last read or commanded."""
+        values = (self.data or {}).get(zone_mac, {})
+        return {"StTem": values.get("StTem"), "StFahFlg": values.get("StFahFlg", 0)}
 
     async def _async_confirm(self, _now: datetime) -> None:
         await self.async_request_refresh()

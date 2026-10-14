@@ -44,8 +44,11 @@ reply:
 * Status of the gateway itself: `"mac":"<gateway mac>"`.
 * Every sub-unit answers the info columns (`name`, `mid`, `hid`, `host`, `ver`) with
   the **controller's** values (`name` = `GR-ZCntrlr_…`, `mid` = `3017`), so only the
-  sub-device list tells the AC unit (`5000`) from a zone (`5001`); the MAC suffix
-  (`00` = AC unit) works too.
+  sub-device list (`5000` AC unit, `5001` zone) or the MAC suffix (`00` = AC unit)
+  tells them apart. The integration uses the suffix. The name, the model ids and
+  the suffix are all fixed in the module firmware (v1.21, v1.27 and v1.28).
+* No sub-unit answers `SetTem`, `TemRec`, `TemUn` or `Add0.5`. The AC unit and the
+  gateway answer `StTem` and `StFahFlg` too, always 0.
 
 ## ⚠ Request size limit
 
@@ -67,8 +70,11 @@ also copes poorly with bursts — space requests a few hundred ms apart.
 | sub `00` | `AllErr` | error flag |
 | zone sub `0N` | `Pow` | zone open (1) / closed (0) |
 | zone sub `0N` | `StTem` | zone setpoint, **°C − 16** (0 = 16 °C … 14 = 30 °C). Writable. |
+| zone sub `0N` | `StFahFlg` | the setpoint's bit: the half degree in °C, and in °F which of two values. Writable; always write it with `StTem`, see below. |
 | gateway | `StTem1`…`StTem8` | the same setpoints, all zones in one read (mirrors each zone's `StTem`) |
-| gateway | `Mod` + `StTem1..N` | read together for a consistent mode/setpoint snapshot |
+| gateway | `StFahFlg1`…`StFahFlg8` | each zone's bit (mirrors each zone's `StFahFlg`) |
+| gateway | `Mod` + `StTem1..N` + `StFahFlg1..N` | read together for a consistent mode/setpoint snapshot |
+| sub `00`, gateway, zones | `TemUnit` | unit of the controller and the wall panel: 0 °C, 1 °F. Write it to sub `00`; everything follows. |
 
 The gateway's own `Pow` reads 0 while the system runs; it is not the system power.
 
@@ -92,6 +98,22 @@ Observed values on a 4-zone system: `EnWdVlv1..4 = 1`, `EnValve1..4 = 1`
 the room-name preset and number chosen on the panel; `MasterPow = 1`;
 `IndoorType = 1`; `InProtocol = 19`; `HeatSvStTemMax`/`CoolSvStTemMin`/`EnSvSt`
 — the energy-saving setpoint limits (0 = off). Unused zones report `StTemN = 4`.
+
+## Temperature unit and the half-degree bit
+
+`StTem` and `StFahFlg` work like `SetTem` and `TemRec` on other Gree units, in
+both units (see `custom_components/gree_zone/temperature.py`):
+
+* **°C:** the bit is the half degree. `StTem` 2 with the bit is 18.5 °C: written
+  over WiFi, it was still there minutes later and after using the panel. The
+  panel only shows whole degrees, so it shows 18.
+* **°F:** `StTem` is the °C value rounded to a whole degree, and the bit is set
+  when the exact °C value is at or above it. Checked on the panel: 64 °F =
+  `StTem` 2 / bit 0, 66 °F = 3/0, 67 °F = 3/1, 70 °F = 5/1, 72 °F = 6/1.
+* Writing only `StTem` **keeps the old bit**: `StTem` 6 sent while the bit was
+  1 showed 72 °F, not 71. So write both together.
+* `TemUnit` switches the unit: written to sub `00` over WiFi, the panel switched
+  to °F and back. The setpoints keep their raw values.
 
 ## Wall-panel per-mode setpoint memory
 
