@@ -94,7 +94,8 @@ HidSvrVer InHid InHidSvrVer
 ```
 
 Observed values on a 4-zone system: `EnWdVlv1..4 = 1`, `EnValve1..4 = 1`
-(5–8 = 0) — zone enabled; `RmType1..4` = 1/14/7/8 and `RmNum1..4` = 0/1/0/2 —
+(5–8 = 0) — zone fitted and enabled, they do not follow the dampers (see
+[Zone airflow](#zone-airflow-and-whether-the-unit-is-running)); `RmType1..4` = 1/14/7/8 and `RmNum1..4` = 0/1/0/2 —
 the room-name preset and number chosen on the panel; `MasterPow = 1`;
 `IndoorType = 1`; `InProtocol = 19`; `HeatSvStTemMax`/`CoolSvStTemMin`/`EnSvSt`
 — the energy-saving setpoint limits (0 = off). Unused zones report `StTemN = 4`.
@@ -158,6 +159,63 @@ Ways to get them, best first:
    frame format, though that link may not carry temperatures.
 3. SDR (`rtl_433`) on the RF remotes — frequency and protocol undocumented.
 4. Or simply a separate temperature sensor next to each RF remote.
+
+## Zone airflow and whether the unit is running
+
+**Not available over WiFi either.** The module does not report which zones
+have air flowing, whether a damper is open, or whether the unit is heating or
+cooling at all. Checked on 2026-10-18; don't chase it again.
+
+How the zones behave (seen on this install, every zone has an RF remote with
+**Use Sensor** on, so the remote's thermometer is the zone's sensor):
+
+* A zone starts calling for air when its room is about **1.5 °C below** its
+  target in Heat, or about **1.5 °C above** it in Cool. When it stops was not
+  measured.
+* The zone the panel calls the *always open zone* (zone 1 here) is always on,
+  but **not always open**: its damper opens whenever any other zone opens, and
+  when it calls itself. Don't turn it off over WiFi: the controller refuses, or
+  the whole system shuts down.
+
+The test: the same columns were read in three states, from the gateway, the AC
+unit (`00`) and every zone:
+
+1. Cool, two zones calling, so the dampers open.
+2. Heat, every room 2.5–6 °C above its target, so nothing calling and every
+   damper closed.
+3. Heat, Downstairs set to 30 °C and the fan to High, with the heat confirmed
+   running at the panel.
+
+Only `WdSpd` changed (the fan setting from step 3). These stayed the same in all
+three:
+
+| Column | Value | What it is |
+| --- | --- | --- |
+| `EnWdVlv1..8`, `EnValve1..8` (and `EnValve` on each zone) | 1 for zones 1–4, 0 for 5–8 | zone fitted and enabled |
+| `VavleAllOn` | 1 | a setting, not the damper state |
+| `WdVlvAllOnNum` | 0 | |
+| `Demand` | 0 | |
+| `OMod`, `ColdMod`, `Dry` | 0 | |
+| `ElcErg`, `ElcGear`, `Elc1Kwh` | 0 | energy, not reported |
+| `ErWdVlv`, `ErVavle` | 0 | damper and valve errors |
+
+**The unit keeps running for a few minutes after a call ends. That's normal.**
+In step 3 the heat started at about 21:34, Downstairs went back to 18 °C at
+21:35:46, and the heat stopped at about 21:40–21:41: roughly 6 minutes after it
+started. That fits the minimum compressor run time of Gree inverter units,
+plus the indoor fan's run-on in Heat. Over WiFi the settings were already back
+(and the module can't show the unit running), so wait about 10 minutes before
+looking for a stuck command.
+
+To show airflow in Home Assistant anyway:
+
+1. Estimate it from your own room thermometers with the rule above: a zone that
+   is on is getting air when its room is 1.5 °C or more below its target in
+   Heat (above it in Cool), and the always-on zone whenever any other zone is.
+   A good estimate, not a reading: your thermometers are not the RF remotes.
+2. The wall-panel cable, as for the zone temperatures above: the interface
+   drives the dampers and talks to the panel over that RS-485 bus, so damper
+   state likely travels there too.
 
 ## Gree cloud
 
