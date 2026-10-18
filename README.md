@@ -42,12 +42,17 @@ It is on by default. To turn it off, open the integration and choose
 then leaves the zone setpoints as they are. What was learned is kept, so
 turning it on again carries on from there.
 
-### Not available: current zone temperatures
+### Not available: zone temperatures and airflow
 
 The panel shows each zone's ambient temperature, but the WiFi module never
 exposes it: no released firmware (v1.21, v1.27, v1.28) has a field for it and
 there is no raw pass-through. See [docs/PROTOCOL.md](docs/PROTOCOL.md#zone-ambient-temperatures)
 for where the values actually travel and the hardware options for reading them.
+
+The same goes for which zones have air flowing right now: the module reports
+no damper state, and not whether the unit is heating or cooling at all. The
+unit also keeps running for a few minutes after a zone stops calling, which is
+normal. See [docs/PROTOCOL.md](docs/PROTOCOL.md#zone-airflow-and-whether-the-unit-is-running).
 
 ## Installation
 
