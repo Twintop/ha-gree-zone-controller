@@ -240,9 +240,13 @@ unit, all with the same key (the module's key):
 | `<gateway mac>01` to `04` | `<gateway mac>` | `5001` | Zone1 to Zone4 |
 
 `pmac` is the MAC of the gateway. `ver` is `V1.2.1`; `hid`, `prodModel` and
-`subdivCode` are empty. `gree_custom` keeps only the `...00` entry: its
-duplicate filter drops the others, because they share the key and their MAC
-does not end in `00`. See [`upstream/README.md`](../upstream/README.md).
+`subdivCode` are empty. Before #552, `gree_custom` kept only the `...00`
+entry: its duplicate filter dropped the others, because they share the key and
+their MAC does not end in `00`. Since #552 it leaves out only the gateway and
+keeps every sub-unit, and it uses the gateway (the `pmac`, which is also the
+first 12 characters of each sub-unit MAC) as their MQTT controller. Control
+still has to be local, because the module has no MQTT client. See
+[`upstream/README.md`](../upstream/README.md).
 
 Pairing the module with Gree+ again (wall panel: **Menu, Function, Reset WiFi,
 Confirm**, or the reset button on the module) gives it a new local key; the
