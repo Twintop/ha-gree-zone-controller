@@ -58,10 +58,13 @@ normal. See [docs/PROTOCOL.md](docs/PROTOCOL.md#zone-airflow-and-whether-the-uni
 
 1. Pair the zone controller's WiFi module with the Gree+ app as usual.
 2. Install it, then restart Home Assistant:
-   * **HACS:** HACS → ⋮ → *Custom repositories* → add
-     `https://github.com/Twintop/ha-gree-zone-controller` as an *Integration*,
-     then download **Gree Zone Controller**; or
-   * **manually:** copy `custom_components/gree_zone` into your Home Assistant
+   * **HACS:** open HACS, search for **Gree Zone Controller** and download it,
+     or go straight to it:
+     [open in HACS](https://my.home-assistant.io/redirect/hacs_repository/?owner=Twintop&repository=ha-gree-zone-controller&category=integration).
+   * **HACS custom repository**, if the search does not find it: HACS → ⋮ →
+     *Custom repositories* → add `https://github.com/Twintop/ha-gree-zone-controller`
+     as an *Integration*, then download **Gree Zone Controller**.
+   * **Manually:** copy `custom_components/gree_zone` into your Home Assistant
      `config/custom_components/` folder.
 3. **Settings → Devices & services → Add integration → Gree Zone Controller**,
    enter the WiFi module's IP address, then name your zones and tick the
