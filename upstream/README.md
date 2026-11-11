@@ -8,29 +8,35 @@ Work happens on branches of the fork
 
 ## Where things stand
 
-**Merged upstream** (preparation, found while porting):
+**Merged upstream** (the preparation found while porting, and PR 4):
 
 | PR | What |
 | --- | --- |
 | [#547](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/547) | Accept a scan reply without `cid` (the zone controller sends none, so it could not be discovered) |
 | [#548](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/548) | DHCP step: look up the sub-unit by its own MAC, and deep-copy the entry data so a new IP is saved |
 | [#549](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/549) | Climate: skip a device without modes instead of stopping; offer target temperature and swing only when the unit has them |
+| [#552](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/552) | PR 4, zone controller support: squash-merged by @RobHofmann as `b463957`, from `c0d0eea` after eight review rounds. The commits and the review are below. |
 
-**Remaining: two PRs**, the second built on the first, on `5.0-dev` @ `c2bc8c4`. The memory was planned as two PRs (5 for zones, 6 for every device) until review of #552 asked for one:
+**Remaining: one PR**, on `5.0-dev` @ `bda7cee` (after #552 and #554, the reconfigure menu). The memory was planned as two PRs (5 for zones, 6 for every device) until review of #552 asked for one:
 
 | PR | Branch | Commits | What | Tests | Status |
 | --- | --- | --- | --- | --- | --- |
-| 4 | [`zone-controller-support`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-controller-support) | `43f4881`, `d54829c`, `fe1f4de`, `5bfa6cb`, `d6abdcd`, `d666fe1`, `3a806af`, `9f11775`, `d7f57c4`, `6d4c77b`, `2f14e87`, `07f605c`, `b922a26`, `a788528`, `e21a986`, `e33b6f7`, `3f55495`, `c0d0eea` | Zone controller support, a `DeviceType` for every device, the gateway labelled as a zone controller, °C and °F, target temperature columns as groups like the sensors, no error log for Quiet/Turbo on units without them, documented as local only, the cloud login kept out of logs and diagnostics, and cloud discovery keeping the sub-units of a gateway, with the gateway as their MQTT controller | 290 | in review: [#552](https://github.com/RobHofmann/HomeAssistant-GreeClimateComponent/pull/552), requested changes made |
-| 5 | [`zone-setpoint-memory`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-setpoint-memory) | `eeca039`, `5880dbf`, `3d94aa2` | Remember the target temperature per mode on every device that has one, zones included: stored per device as raw columns (with the half-degree/°F bit), a device option that is on by default | 304 | ready, after PR 4 |
+| 5 | [`zone-setpoint-memory`](https://github.com/Twintop/HomeAssistant-GreeClimateComponent/tree/zone-setpoint-memory) | `e869775`, `a7fee8f`, `f759b41`, `4edcfaa` | Remember the target temperature per mode on every device that has one, zones included: stored per device as raw columns (with the half-degree/°F bit), a device option that is on by default, removed with its config entry | 341 | ready to open |
 
-The `5.0-dev` baseline is 255 tests. Every branch passes Ruff 0.17.0 (the pinned
-version), and Mypy and Pylint show nothing new compared with `5.0-dev`. Mypy
+PR 4's commits, for the review notes below: `43f4881`, `d54829c`, `fe1f4de`, `5bfa6cb`, `d6abdcd`, `d666fe1`, `3a806af`, `9f11775`, `d7f57c4`, `6d4c77b`, `2f14e87`, `07f605c`, `b922a26`, `a788528`, `e21a986`, `e33b6f7`, `3f55495`, `c0d0eea` (290 tests at the time).
+
+The `5.0-dev` baseline is 327 tests (on Linux, see
+[Running the upstream tests](#running-the-upstream-tests)). The branch passes
+Ruff 0.17.0 (the pinned version), and Mypy and Pylint show nothing new compared
+with `5.0-dev`. Mypy
 has to run with Home Assistant installed (`pip install homeassistant`, plus the
 `enum_identity_compare` plugin from Home Assistant core that `mypy.ini` names).
 Without it every Home Assistant type is `Any`, and real errors slip through: the
 first runs here missed the one Rob found in #552.
 
 ### Review of #552
+
+Merged after round 8. What each round asked for, and what changed:
 
 | Point | What it was | Fix |
 | --- | --- | --- |
@@ -161,9 +167,14 @@ the zone PRs were opened:
     change the zones are read again and stored under the old mode, after it the
     stored values of the new mode are sent.
 * A device option, **Remember Target Temperature per Mode** (`setpoint_memory`),
-  for every device with a target temperature, zones included. On by default.
+  for every device with a target temperature, zones included. On by default. It
+  is in the device options form, so it also shows under **Edit a device** in the
+  reconfigure menu from #554.
 * `__init__.py` keeps it in a `Store` per config entry
-  (`.storage/gree_custom.<entry_id>.setpoints`). No Home Assistant imports in the
+  (`.storage/gree_custom.<entry_id>.setpoints`), saved when the entry unloads and
+  removed with the entry (`async_remove_entry()`). Without the save on unload, a
+  delayed save still pending would write the file again after the removal. No
+  Home Assistant imports in the
   memory itself; fully tested against fakes. Standalone and VRF units are only
   tested against fakes; a split or VRF owner should try it before merge.
 
@@ -199,11 +210,35 @@ old version, not a problem with the branch.
 Running this next to `gree_zone` doubles the polling of the fragile WiFi module.
 Keep only one of them long-term.
 
-## Running the upstream tests on Windows
+## Running the upstream tests
 
-The suite puts `custom_components/gree_custom` on `sys.path`, and its
-`select.py` shadows the stdlib `select` extension module on Windows (on Linux
-`select` is built in). Import `asyncio` before pytest changes the path:
+CI runs `pytest` on Linux with Python 3.14 and `requirements_dev.txt`. Since
+#554 that includes config flow tests in `tests/config_flow/`, which run a real
+Home Assistant through `pytest-homeassistant-custom-component` and bind
+loopback addresses out of `127.0.0.0/8`. They need Linux: on Windows the plugin
+does not even load (Home Assistant's `runner.py` imports `fcntl`), and as an
+installed pytest plugin it then breaks every run.
+
+**Full suite:** in a Linux container, from a `git archive` of the branch, for
+example with Podman:
+
+```sh
+git archive -o branch.tar <branch>
+podman run --rm -v "$PWD:/work:ro" docker.io/library/python:3.14 bash -c '
+  mkdir /src && tar -x -C /src -f /work/branch.tar && cd /src &&
+  pip install -q -r requirements_dev.txt && pytest -q'
+```
+
+**On Windows**, everything except the config flow tests:
+
+```sh
+python run_pytest.py -q -p no:homeassistant --ignore=tests/config_flow
+```
+
+`run_pytest.py` is needed because the suite puts `custom_components/gree_custom`
+on `sys.path`, and its `select.py` shadows the stdlib `select` extension module
+on Windows (on Linux `select` is built in). It imports `asyncio` before pytest
+changes the path:
 
 ```python
 # run_pytest.py
